@@ -20,6 +20,8 @@ class Agent:
             {"role": "system", "content": SYSTEM_PROMPT},
         ]
         self.verbose = verbose
+        # 将可用工具构建为名称到函数的安全映射
+        self.tool_map = {t.__name__: t for t in self.tools}
 
     def get_tool_schema(self) -> List[Dict[str, Any]]:
         # 获取所有工具的 JSON 模式
@@ -28,14 +30,26 @@ class Agent:
     def handle_tool_call(self, tool_call):
         # 处理工具调用
         function_name = tool_call.function.name
-        function_args = tool_call.function.arguments
+        function_args = tool_call.function.arguments or "{}"
         function_id = tool_call.id
 
-        function_call_content = eval(f"{function_name}(**{function_args})")
+        # 安全解析参数并调用映射中的函数
+        try:
+            args = json.loads(function_args)
+        except Exception:
+            args = {}
+        func = self.tool_map.get(function_name)
+        if func is None:
+            result = f"Unknown tool: {function_name}"
+        else:
+            try:
+                result = func(**args)
+            except Exception as e:
+                result = f"Tool execution error in {function_name}: {e}"
 
         return {
             "role": "tool",
-            "content": function_call_content,
+            "content": str(result),
             "tool_call_id": function_id,
         }
 
@@ -51,16 +65,34 @@ class Agent:
             stream=False,
         )
         if response.choices[0].message.tool_calls:
-            self.messages.append({"role": "assistant", "content": response.choices[0].message.content})
-            # 处理工具调用
+            response_message = response.choices[0].message
+            # 先把包含 tool_calls 的 assistant 消息（包括其 tool_calls）加入消息历史
+            assistant_msg = {
+                "role": "assistant",
+                "content": response_message.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in response_message.tool_calls
+                ],
+            }
+            self.messages.append(assistant_msg)
+
+            # 执行每个工具并将结果加入历史
             tool_list = []
-            for tool_call in response.choices[0].message.tool_calls:
-                # 处理工具调用并将结果添加到消息列表中
+            for tool_call in response_message.tool_calls:
                 self.messages.append(self.handle_tool_call(tool_call))
                 tool_list.append([tool_call.function.name, tool_call.function.arguments])
             if self.verbose:
-                print("调用工具：", response.choices[0].message.content, tool_list)
-            # 再次获取模型的完成响应，这次包含工具调用的结果
+                print("调用工具：", response_message.content, tool_list)
+
+            # 带着工具结果再次请求模型
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=self.messages,
