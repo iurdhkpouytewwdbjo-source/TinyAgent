@@ -1,4 +1,3 @@
-> ***注意：本项目以集成到 [Happy-LLM](https://github.com/datawhalechina/happy-llm) 开源项目 Chapter7.3，本项目的后续更新将在 Happy-LLM 项目中进行。***
 # TinyAgent
 
 一个基于 OpenAI 接口的轻量级工具调用 Agent 示例。通过 tool_calls 机制，模型可在对话中动态调用预定义的 Python 工具函数来完成任务。该项目已集成到 Happy-LLM（Chapter 7.3），后续更新请关注 Happy-LLM。
