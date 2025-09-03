@@ -1,18 +1,125 @@
 > ***注意：本项目以集成到 [Happy-LLM](https://github.com/datawhalechina/happy-llm) 开源项目 Chapter7.3，本项目的后续更新将在 Happy-LLM 项目中进行。***
-
 # TinyAgent
 
-在`ChatGPT`横空出世，夺走`Bert`的桂冠之后，大模型愈发的火热，国内各种模型层出不穷，史称“百模大战”。大模型的能力是毋庸置疑的，但大模型在一些实时的问题上，或是某些专有领域的问题上，可能会显得有些力不从心。因此，我们需要一些工具来为大模型赋能，给大模型一个抓手，让大模型和现实世界发生的事情对齐颗粒度，这样我们就获得了一个更好的用的大模型。
+一个基于 OpenAI 接口的轻量级工具调用 Agent 示例。通过 tool_calls 机制，模型可在对话中动态调用预定义的 Python 工具函数来完成任务。该项目已集成到 Happy-LLM（Chapter 7.3），后续更新请关注 Happy-LLM。
 
-本项目基于 `openai` 库和其 `tool_calls` 功能，实现了一个简单的 Agent 结构，可以调用预定义的工具函数来完成特定任务。
+- 仓库地址（当前）：本项目
+- 集成位置：https://github.com/datawhalechina/happy-llm
 
-通过这个简单的例子，我们可以了解 Agent 如何利用大模型和外部工具进行交互。
+## 功能概览
+
+- 多轮对话管理：维护 system/user/assistant/tool 角色消息
+- 动态工具调用：提供工具 JSON Schema，模型触发 tool_calls 后由 Agent 执行并回传结果，再次补全生成最终答复
+- 可扩展工具集：通过新增带注释的函数即可扩展
+- 语言自适应：输出与用户语言保持一致（中文优先）
+
+当前内置工具
+- 时间：get_current_datetime
+- 数学：add、mul、compare
+- 文本：count_letter_in_string
+- 检索：search_wikipedia（返回前三条摘要）
+
+## 代码结构
+
+- src/core.py：Agent 核心逻辑（消息管理、两阶段补全、工具调用处理）
+- src/utils.py：function_to_json，将函数签名与注释转换为 OpenAI tools 所需 JSON Schema
+- src/tools.py：工具函数实现
+- demo.py：命令行交互示例
+- web_demo.py：Streamlit Web 演示界面
+- images/：示意图与动图
+
+## 工作流程
+
+1) 接收用户输入并加入历史
+2) 携带工具 Schema 调用模型
+3) 如触发 tool_calls：执行对应 Python 工具函数，并将结果以 tool 消息加入历史
+4) 再次调用模型生成最终回复
+5) 返回给用户并记录
+
+示意图
 
 <div style="display: flex; justify-content: center;">
-    <img src="./images/example.gif" style="width: 100%;">
+  <img src="./images/Tiny_Agent.jpg" style="width: 80%;" />
 </div>
 
-## 实现细节
+## 快速开始
+
+准备
+- Python 3.9+
+- 申请并配置兼容 OpenAI 的 API Key（示例使用 SiliconFlow）
+
+安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+命令行示例
+
+```bash
+# 设置你的 API Key（示例）
+export OPENAI_API_KEY="your_siliconflow_api_key"
+# 或在 demo.py 中直接替换 api_key
+
+python demo.py
+```
+
+Web 示例（Streamlit）
+
+```bash
+# 在 web_demo.py 中替换 api_key 后运行
+streamlit run web_demo.py
+```
+
+## 配置说明
+
+OpenAI 客户端（示例使用 SiliconFlow 端点）
+
+```python
+from openai import OpenAI
+client = OpenAI(
+    api_key="YOUR_API_KEY",
+    base_url="https://api.siliconflow.cn/v1",
+)
+```
+
+Agent 构造
+
+```python
+from src.core import Agent
+from src.tools import get_current_datetime, add, compare, count_letter_in_string, search_wikipedia
+
+agent = Agent(
+    client=client,
+    model="Qwen/Qwen2.5-32B-Instruct",
+    tools=[get_current_datetime, add, compare, count_letter_in_string, search_wikipedia],
+)
+```
+
+## 安全与注意事项
+
+- 生产环境请避免使用 eval 动态执行函数，建议维护安全的函数映射并进行参数校验
+- search_wikipedia 需要外网访问
+- 一些工具返回字符串以便直接插入对话，实际集成可改为返回结构化数据
+
+## 扩展工具
+
+新增一个工具的步骤：
+1) 在 src/tools.py 中新增带 docstring 的函数（包含参数类型注释）
+2) 在创建 Agent 时把该函数加入 tools 列表
+3) function_to_json 会自动将其转换为工具 Schema
+
+## 许可证
+
+本项目采用 Apache-2.0 许可证，详见 LICENSE。
+
+## 致谢
+
+- 感谢 Happy-LLM 项目对本仓库的集成与示例展示。
+- 如果觉得有帮助，欢迎点个 Star！
+
+
+
 
 ### Step 1: 初始化客户端和模型
 
